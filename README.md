@@ -27,34 +27,41 @@ A comprehensive Streamlit web application that creates JIRA issues, generates te
 
 ## 🚀 Quick Start
 
-1. **Install dependencies:**
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/kunnath/deepcase.git
+   cd deepcase
+   ```
+
+2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    playwright install  # Install browser drivers
    ```
 
-2. **Configure your API credentials in `.env`:**
+3. **Configure your API credentials:**
    ```bash
-   jira_base_url="https://your-domain.atlassian.net"
-   jira_email="your.email@company.com"
-   jira_api_token="your_jira_api_token"
-   DEEPSEEK_API_KEY="your_deepseek_api_key"
+   # Copy the example environment file
+   cp .env.example .env
+   
+   # Edit .env with your actual API keys
+   nano .env  # or use your preferred editor
    ```
 
-3. **Get your API tokens:**
+4. **Get your API tokens:**
    - **JIRA API Token:** [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
    - **DeepSeek API Key:** [DeepSeek Platform](https://platform.deepseek.com/api_keys)
 
-## 📖 Usage
-
-1. **Run the application:**
+5. **Run the application:**
    ```bash
    streamlit run jira_test_generator.py
    ```
 
-2. **Open your browser** to `http://localhost:8501`
+## 📖 Usage
 
-3. **Choose your workflow:**
+1. **Open your browser** to `http://localhost:8501`
+
+2. **Choose your workflow:**
 
 ### 🆕 Create New Issue → Test → Automate
    - Fill in feature details (title, description, module, complexity)
@@ -72,13 +79,17 @@ A comprehensive Streamlit web application that creates JIRA issues, generates te
    - Click "🚀 Run Test Steps" to execute automation  
    - Get comprehensive test results and screenshots
 
-## File Structure
+## 📁 File Structure
 
 ```
+deepcase/
 ├── jira_test_generator.py  # Main Streamlit application
 ├── requirements.txt        # Python dependencies
-├── .env                   # Environment variables (JIRA API key)
-└── README.md             # This file
+├── .env.example           # Template for environment variables
+├── .env                   # Your API keys (not in git)
+├── .gitignore            # Git ignore file
+├── README.md             # This documentation
+└── automation_reports/   # Generated test reports (auto-created)
 ```
 
 ## Generated Test Case Format
@@ -92,11 +103,13 @@ The application generates structured test cases with:
 - Expected Results
 - Priority and Status fields
 
-## Security Notes
+## 🔐 Security Notes
 
-- API keys are handled securely through environment variables
-- Sensitive information is not stored in the application
-- API keys are masked in the UI input field
+- **API keys are handled securely** through environment variables
+- **`.env` file is excluded** from git repository (see `.gitignore`)
+- **Sensitive information is not stored** in the application
+- **API keys are masked** in the UI input field
+- **Use `.env.example`** as a template for your local `.env` file
 
 ## Troubleshooting
 
@@ -104,8 +117,31 @@ The application generates structured test cases with:
 - **Issue Not Found**: Check that the issue ID exists and you have access
 - **Connection Issues**: Ensure your JIRA instance is accessible
 
-## Requirements
+## 📋 Requirements
 
-- Python 3.7+
-- Valid JIRA account with API access
-- Internet connection to fetch JIRA issues# deepcase
+- **Python 3.7+**
+- **Valid JIRA account** with API access
+- **DeepSeek API account** for browser automation
+- **Internet connection** to fetch JIRA issues and run automation
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙋‍♂️ Support
+
+If you have any questions or issues:
+- Open an issue on [GitHub](https://github.com/kunnath/deepcase/issues)
+- Check the troubleshooting section above
+
+---
+
+**Built with ❤️ using Streamlit & BrowserClark**
