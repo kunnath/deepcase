@@ -36,10 +36,19 @@ A comprehensive Streamlit web application that creates JIRA issues, generates te
 2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
-   playwright install  # Install browser drivers
+   playwright install  # Install browser drivers for automation
    ```
 
-3. **Configure your API credentials:**
+3. **Set up BrowserClark for browser automation:**
+   ```bash
+   # Install additional browser automation dependencies
+   pip install browser-use playwright asyncio
+   
+   # Install Playwright browsers (required for automation)
+   playwright install chromium firefox webkit
+   ```
+
+4. **Configure your API credentials:**
    ```bash
    # Copy the example environment file
    cp .env.example .env
@@ -48,11 +57,32 @@ A comprehensive Streamlit web application that creates JIRA issues, generates te
    nano .env  # or use your preferred editor
    ```
 
-4. **Get your API tokens:**
+5. **Get your API tokens:**
    - **JIRA API Token:** [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
    - **DeepSeek API Key:** [DeepSeek Platform](https://platform.deepseek.com/api_keys)
 
-5. **Run the application:**
+6. **Verify browser automation setup:**
+   ```bash
+   # Test if browsers are installed correctly
+   playwright --version
+   
+   # Test browser automation (optional)
+   python -c "
+   try:
+       from browser_use import Agent
+       from browser_use.llm.deepseek.chat import ChatDeepSeek
+       print('✅ BrowserClark automation ready!')
+   except ImportError as e:
+       print('❌ Browser automation setup incomplete:', e)
+   "
+   ```
+
+7. **Verify installation (recommended):**
+   ```bash
+   python verify_setup.py
+   ```
+
+8. **Run the application:**
    ```bash
    streamlit run jira_test_generator.py
    ```
@@ -84,10 +114,12 @@ A comprehensive Streamlit web application that creates JIRA issues, generates te
 ```
 deepcase/
 ├── jira_test_generator.py  # Main Streamlit application
-├── requirements.txt        # Python dependencies
+├── verify_setup.py         # Installation verification script
+├── requirements.txt        # Python dependencies with BrowserClark
 ├── .env.example           # Template for environment variables
 ├── .env                   # Your API keys (not in git)
 ├── .gitignore            # Git ignore file
+├── LICENSE               # MIT License
 ├── README.md             # This documentation
 └── automation_reports/   # Generated test reports (auto-created)
 ```
@@ -103,6 +135,64 @@ The application generates structured test cases with:
 - Expected Results
 - Priority and Status fields
 
+## 🤖 BrowserClark Automation Setup
+
+### Prerequisites for Browser Automation
+
+1. **Python 3.8+** (required for browser-use library)
+2. **DeepSeek API Key** from [DeepSeek Platform](https://platform.deepseek.com/api_keys)
+3. **Playwright browsers** installed
+
+### Detailed Setup Steps
+
+```bash
+# 1. Install core browser automation
+pip install browser-use>=0.9.5
+
+# 2. Install Playwright and browsers
+pip install playwright>=1.55.0
+playwright install
+
+# 3. Verify installation
+python -c "import playwright; print('Playwright installed:', playwright.__version__)"
+
+# 4. Test browser launch (optional)
+python -c "
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=False)
+    page = browser.new_page()
+    page.goto('https://example.com')
+    print('✅ Browser automation working!')
+    browser.close()
+"
+```
+
+### Environment Variables Required
+
+Your `.env` file must include:
+```bash
+# For JIRA integration
+jira_base_url="https://your-domain.atlassian.net"
+jira_email="your.email@company.com"
+jira_api_token="your_jira_api_token"
+
+# For browser automation (REQUIRED)
+DEEPSEEK_API_KEY="your_deepseek_api_key_here"
+```
+
+### Browser Automation Modes
+
+- **🔍 Visual Mode (Default)**: Browser window is visible - watch automation happen!
+  - Great for debugging and learning
+  - See exactly what the AI is doing
+  - Slower but more transparent
+
+- **⚡ Headless Mode**: Browser runs in background
+  - Faster execution
+  - No visual window
+  - Better for batch processing
+
 ## 🔐 Security Notes
 
 - **API keys are handled securely** through environment variables
@@ -111,11 +201,63 @@ The application generates structured test cases with:
 - **API keys are masked** in the UI input field
 - **Use `.env.example`** as a template for your local `.env` file
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
+### JIRA Issues
 - **Authentication Error**: Verify your JIRA URL, email, and API key
 - **Issue Not Found**: Check that the issue ID exists and you have access
 - **Connection Issues**: Ensure your JIRA instance is accessible
+
+### Browser Automation Issues
+
+#### "Browser automation not available, running in demo mode"
+```bash
+# Fix: Install browser-use library
+pip install browser-use
+
+# Or reinstall if corrupted
+pip uninstall browser-use
+pip install browser-use>=0.9.5
+```
+
+#### "No module named 'playwright'"
+```bash
+# Fix: Install Playwright
+pip install playwright
+playwright install
+```
+
+#### "DeepSeek API Error" or "Invalid API Key"
+- Verify your `DEEPSEEK_API_KEY` in `.env` file
+- Check API key is valid at [DeepSeek Platform](https://platform.deepseek.com/api_keys)
+- Ensure no extra spaces or quotes in the API key
+
+#### "Browser failed to launch"
+```bash
+# Fix: Reinstall browser drivers
+playwright uninstall
+playwright install
+
+# Or install specific browser
+playwright install chromium
+```
+
+#### "Headless mode not working"
+- Switch to "Show Browser" mode in the sidebar
+- Check if any antivirus is blocking browser automation
+- Try running with administrator privileges (Windows) or sudo (Linux/Mac)
+
+#### Performance Issues
+- **Slow automation**: Use "Headless" mode for faster execution
+- **High CPU usage**: Close other browser instances
+- **Memory issues**: Restart the Streamlit application
+
+### Debug Mode
+Enable debug logging by running:
+```bash
+# Run with verbose output
+PYTHONPATH=. streamlit run jira_test_generator.py --logger.level=debug
+```
 
 ## 📋 Requirements
 

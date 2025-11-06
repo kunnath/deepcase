@@ -1,7 +1,27 @@
+# Core application
 streamlit>=1.28.0
 requests>=2.31.0
 python-dotenv>=1.0.0
+
+# Browser automation with BrowserClark
 browser-use>=0.9.5
 playwright>=1.55.0
+
+# AI/LLM integration
+anthropic>=0.68.1
+openai>=1.99.2
+
+# Additional dependencies for browser automation
 asyncio
-pathlib
+aiohttp>=3.12.0
+beautifulsoup4>=4.9.0
+pillow>=11.2.0
+
+# Standard library (no install needed, listed for reference)
+# pathlib - built-in
+# threading - built-in  
+# queue - built-in
+# json - built-in
+# re - built-in
+# time - built-in
+# datetime - built-in
