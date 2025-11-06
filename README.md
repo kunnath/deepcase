@@ -2,6 +2,10 @@
 
 A comprehensive Streamlit web application that creates JIRA issues, generates test cases, and executes them automatically using BrowserClark AI automation.
 
+## 📺 Demo
+
+**Watch the Demo Video:** [https://youtu.be/vtD-GRIPDz4](https://youtu.be/vtD-GRIPDz4)
+
 ## ✨ Features
 
 ### 🎯 JIRA Integration
@@ -26,6 +30,8 @@ A comprehensive Streamlit web application that creates JIRA issues, generates te
 - 📱 Mobile-friendly design
 
 ## 🚀 Quick Start
+
+> **For browser automation to work, you MUST complete the BrowserClark setup below!**
 
 1. **Clone the repository:**
    ```bash
