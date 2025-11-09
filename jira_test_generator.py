@@ -1079,7 +1079,22 @@ def main():
                     )
                 
                 with col_run_created:
-                    run_disabled = not deepseek_api_key or st.session_state.test_runner.running
+                    # Check if CSV testing should continue
+                    csv_can_continue = True
+                    if not use_faker and st.session_state.test_data_manager.csv_data is not None:
+                        rows_tested = getattr(st.session_state, 'csv_rows_tested', 0)
+                        total_rows = len(st.session_state.test_data_manager.csv_data)
+                        if rows_tested >= total_rows:
+                            csv_can_continue = False
+                            st.warning(f"⏹️ All {total_rows} CSV rows have been tested. Reset to test again.")
+                            if st.button("🔄 Reset CSV Testing", key="reset_csv"):
+                                st.session_state.csv_rows_tested = 0
+                                st.session_state.test_data_manager.current_row_index = 0
+                                st.success("CSV testing reset!")
+                                st.rerun()
+                    
+                    run_disabled = not deepseek_api_key or st.session_state.test_runner.running or not csv_can_continue
+                    
                     if st.button("🚀 Run Test Steps", disabled=run_disabled, key="run_created"):
                         if not deepseek_api_key:
                             st.error("Please provide DeepSeek API key in sidebar")
@@ -1214,7 +1229,22 @@ def main():
                     )
                 
                 with col_run:
-                    run_disabled = not deepseek_api_key or st.session_state.test_runner.running
+                    # Check if CSV testing should continue
+                    csv_can_continue = True
+                    if not use_faker and st.session_state.test_data_manager.csv_data is not None:
+                        rows_tested = getattr(st.session_state, 'csv_rows_tested', 0)
+                        total_rows = len(st.session_state.test_data_manager.csv_data)
+                        if rows_tested >= total_rows:
+                            csv_can_continue = False
+                            st.warning(f"⏹️ All {total_rows} CSV rows have been tested. Reset to test again.")
+                            if st.button("🔄 Reset CSV Testing", key="reset_csv"):
+                                st.session_state.csv_rows_tested = 0
+                                st.session_state.test_data_manager.current_row_index = 0
+                                st.success("CSV testing reset!")
+                                st.rerun()
+                    
+                    run_disabled = not deepseek_api_key or st.session_state.test_runner.running or not csv_can_continue
+                    
                     if st.button("🚀 Run Test Steps", disabled=run_disabled, key="run_fetched"):
                         if not deepseek_api_key:
                             st.error("Please provide DeepSeek API key in sidebar")
