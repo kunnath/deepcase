@@ -3,6 +3,10 @@ streamlit>=1.28.0
 requests>=2.31.0
 python-dotenv>=1.0.0
 
+# Test data generation and management
+faker>=18.0.0
+pandas>=2.0.0
+
 # Browser automation with BrowserClark
 browser-use>=0.9.5
 playwright>=1.55.0
