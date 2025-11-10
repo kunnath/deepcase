@@ -22,6 +22,10 @@ import pandas as pd
 import csv
 import random
 import string
+from typing import Dict, List, Any, Optional
+import ast
+import subprocess
+import platform
 
 # Load environment variables (optional dependency)
 try:
@@ -202,6 +206,464 @@ class TestDataManager:
         
         df = pd.DataFrame(sample_data)
         return df
+
+class PlaywrightCodeGenerator:
+    """Generate optimized Playwright test scripts from automation results"""
+    
+    def __init__(self):
+        self.base_template = """import {{ test, expect }} from '@playwright/test';
+
+test.describe('{test_suite_name}', () => {{
+{test_cases}
+}});"""
+        
+        self.test_case_template = """  test('{test_name}', async ({{ page }}) => {{
+{test_data_setup}
+{test_steps}
+    
+    // Assertions
+{assertions}
+  }});"""
+    
+    def extract_actions_from_result(self, automation_result: str, test_data: Dict = None) -> List[Dict]:
+        """Extract actionable steps from automation results"""
+        actions = []
+        
+        # Common patterns to look for in automation results
+        navigation_patterns = [
+            r"navigat[ed|ing] to (.+)",
+            r"opened? (.+)",
+            r"visit[ed|ing] (.+)"
+        ]
+        
+        click_patterns = [
+            r"click[ed|ing] (?:on )?(.+)",
+            r"press[ed|ing] (.+)",
+            r"submit[ted|ting] (.+)"
+        ]
+        
+        fill_patterns = [
+            r"fill[ed|ing] (.+) with (.+)",
+            r"enter[ed|ing] (.+) in[to]? (.+)",
+            r"type[d|ing] (.+) in[to]? (.+)"
+        ]
+        
+        wait_patterns = [
+            r"wait[ed|ing] for (.+)",
+            r"expect[ed|ing] (.+) to (?:be )?(.+)"
+        ]
+        
+        # Extract actions from automation result text
+        result_text = automation_result.lower() if automation_result else ""
+        
+        # Add navigation actions
+        for pattern in navigation_patterns:
+            matches = re.findall(pattern, result_text)
+            for match in matches:
+                actions.append({
+                    'type': 'navigate',
+                    'target': match.strip(),
+                    'data': None
+                })
+        
+        # Add fill actions with test data mapping
+        if test_data and test_data.get('data'):
+            data_fields = test_data['data']
+            for field_name, field_value in data_fields.items():
+                # Map common field types to selectors
+                selector = self.map_field_to_selector(field_name)
+                if selector:
+                    actions.append({
+                        'type': 'fill',
+                        'target': selector,
+                        'data': field_value,
+                        'field_name': field_name
+                    })
+        
+        # Add common test actions based on feature type
+        feature_type = test_data.get('feature_type', 'generic') if test_data else 'generic'
+        actions.extend(self.get_feature_specific_actions(feature_type, test_data))
+        
+        return actions
+    
+    def map_field_to_selector(self, field_name: str) -> str:
+        """Map test data field names to likely CSS selectors"""
+        field_mapping = {
+            'email': "input[type='email'], input[name*='email'], input[id*='email'], #email",
+            'username': "input[name*='username'], input[name*='user'], input[id*='username'], #username",
+            'password': "input[type='password'], input[name*='password'], input[id*='password'], #password",
+            'first_name': "input[name*='first'], input[name*='fname'], input[id*='first'], #firstName",
+            'last_name': "input[name*='last'], input[name*='lname'], input[id*='last'], #lastName",
+            'phone': "input[type='tel'], input[name*='phone'], input[id*='phone'], #phone",
+            'address': "input[name*='address'], textarea[name*='address'], input[id*='address'], #address",
+            'company': "input[name*='company'], input[id*='company'], #company",
+            'search_query': "input[type='search'], input[name*='search'], input[id*='search'], #search",
+            'message': "textarea[name*='message'], textarea[name*='comment'], textarea[id*='message'], #message",
+            'subject': "input[name*='subject'], input[id*='subject'], #subject",
+            'card_number': "input[name*='card'], input[name*='number'], input[id*='card'], #cardNumber",
+            'cvv': "input[name*='cvv'], input[name*='cvc'], input[id*='cvv'], #cvv",
+            'quantity': "input[type='number'], input[name*='quantity'], input[id*='quantity'], #quantity"
+        }
+        
+        return field_mapping.get(field_name.lower(), f"input[name*='{field_name}'], input[id*='{field_name}'], #{field_name}")
+    
+    def get_feature_specific_actions(self, feature_type: str, test_data: Dict = None) -> List[Dict]:
+        """Generate feature-specific actions based on feature type"""
+        actions = []
+        
+        if feature_type == 'login':
+            actions.extend([
+                {'type': 'click', 'target': "button[type='submit'], input[type='submit'], .login-button, .btn-login", 'data': None},
+                {'type': 'wait', 'target': '.dashboard, .home, .profile, .welcome', 'data': None},
+                {'type': 'assert', 'target': 'url', 'data': 'should contain dashboard or home'}
+            ])
+        
+        elif feature_type == 'registration':
+            actions.extend([
+                {'type': 'click', 'target': "button[type='submit'], .register-button, .signup-button, .btn-register", 'data': None},
+                {'type': 'wait', 'target': '.success, .confirmation, .welcome', 'data': None},
+                {'type': 'assert', 'target': 'text', 'data': 'should contain success or welcome'}
+            ])
+        
+        elif feature_type == 'search':
+            actions.extend([
+                {'type': 'click', 'target': "button[type='submit'], .search-button, .btn-search", 'data': None},
+                {'type': 'wait', 'target': '.search-results, .results, .result-list', 'data': None},
+                {'type': 'assert', 'target': '.result-item, .search-result', 'data': 'should be visible'}
+            ])
+        
+        elif feature_type == 'contact':
+            actions.extend([
+                {'type': 'click', 'target': "button[type='submit'], .submit-button, .btn-submit", 'data': None},
+                {'type': 'wait', 'target': '.success, .confirmation, .thank-you', 'data': None},
+                {'type': 'assert', 'target': 'text', 'data': 'should contain thank you or sent'}
+            ])
+        
+        elif feature_type == 'product':
+            actions.extend([
+                {'type': 'click', 'target': ".add-to-cart, .btn-add-cart, button[data-action='add-cart']", 'data': None},
+                {'type': 'wait', 'target': '.cart-success, .added-to-cart', 'data': None},
+                {'type': 'assert', 'target': '.cart-count, .cart-items', 'data': 'should be updated'}
+            ])
+        
+        elif feature_type == 'payment':
+            actions.extend([
+                {'type': 'click', 'target': "button[type='submit'], .pay-button, .btn-pay", 'data': None},
+                {'type': 'wait', 'target': '.payment-success, .confirmation', 'data': None},
+                {'type': 'assert', 'target': 'text', 'data': 'should contain success or confirmation'}
+            ])
+        
+        return actions
+    
+    def optimize_actions(self, actions: List[Dict]) -> List[Dict]:
+        """Optimize and clean up the action sequence"""
+        optimized = []
+        seen_fills = set()
+        
+        for action in actions:
+            # Remove duplicate fill actions for same target
+            if action['type'] == 'fill':
+                if action['target'] in seen_fills:
+                    continue
+                seen_fills.add(action['target'])
+            
+            # Merge similar wait actions
+            if action['type'] == 'wait' and optimized:
+                last_action = optimized[-1]
+                if last_action['type'] == 'wait' and last_action['target'] == action['target']:
+                    continue
+            
+            optimized.append(action)
+        
+        return optimized
+    
+    def generate_playwright_code(self, actions: List[Dict], test_name: str, test_url: str, test_data: Dict = None) -> str:
+        """Generate complete Playwright test code"""
+        
+        # Generate test data setup
+        test_data_setup = ""
+        if test_data and test_data.get('data'):
+            test_data_setup = "    // Test data\n"
+            data = test_data['data']
+            for key, value in data.items():
+                # Clean field names for valid JavaScript variable names
+                clean_key = re.sub(r'[^a-zA-Z0-9_]', '_', str(key)).replace(' ', '_')
+                if isinstance(value, str):
+                    # Escape single quotes in string values
+                    escaped_value = value.replace("'", "\\'")
+                    test_data_setup += f"    const {clean_key} = '{escaped_value}';\n"
+                elif isinstance(value, (int, float)):
+                    test_data_setup += f"    const {clean_key} = {value};\n"
+                elif isinstance(value, list):
+                    test_data_setup += f"    const {clean_key} = {json.dumps(value)};\n"
+            test_data_setup += "\n"
+        
+        # Generate test steps
+        test_steps = f"    // Navigate to test URL\n    await page.goto('{test_url}');\n    await page.waitForLoadState('networkidle');\n\n"
+        
+        for action in actions:
+            if action['type'] == 'navigate':
+                test_steps += f"    await page.goto('{action['target']}');\n"
+                test_steps += f"    await page.waitForLoadState('networkidle');\n"
+            
+            elif action['type'] == 'fill':
+                field_name = action.get('field_name', 'value')
+                clean_field_name = re.sub(r'[^a-zA-Z0-9_]', '_', str(field_name)).replace(' ', '_')
+                selector = action['target']
+                test_steps += f"    // Fill {field_name}\n"
+                test_steps += f"    await page.waitForSelector(\"{selector}\", {{ timeout: 5000 }});\n"
+                if action['data'] and isinstance(action['data'], str):
+                    escaped_data = str(action['data']).replace("'", "\\'")
+                    test_steps += f"    await page.fill(\"{selector}\", '{escaped_data}');\n"
+                else:
+                    test_steps += f"    await page.fill(\"{selector}\", String({clean_field_name}));\n"
+                test_steps += "\n"
+            
+            elif action['type'] == 'click':
+                test_steps += f"    // Click action\n"
+                test_steps += f"    await page.waitForSelector(\"{action['target']}\", {{ timeout: 10000 }});\n"
+                test_steps += f"    await page.click(\"{action['target']}\");\n"
+                test_steps += "    await page.waitForTimeout(2000);\n\n"
+            
+            elif action['type'] == 'wait':
+                if 'url' in action['target'].lower():
+                    test_steps += f"    await page.waitForURL('**/*{action['target']}*');\n"
+                else:
+                    test_steps += f"    await page.waitForSelector(\"{action['target']}\", {{ timeout: 10000 }});\n"
+        
+        # Generate assertions
+        assertions = ""
+        assertion_actions = [a for a in actions if a['type'] == 'assert']
+        
+        for assertion in assertion_actions:
+            if 'url' in assertion['target'].lower():
+                assertions += f"    await expect(page).toHaveURL(/{assertion['data']}/i);\n"
+            elif 'text' in assertion['target'].lower():
+                assertions += f"    await expect(page.locator('body')).toContainText(/{assertion['data']}/i);\n"
+            else:
+                assertions += f"    await expect(page.locator(\"{assertion['target']}\")).toBeVisible();\n"
+        
+        if not assertions:
+            # Add default assertions
+            assertions = "    // Verify page loaded successfully\n"
+            assertions += "    await expect(page).toHaveTitle(/.+/);\n"
+            assertions += "    await expect(page.locator('body')).toBeVisible();"
+        
+        # Generate complete test case
+        test_case = self.test_case_template.format(
+            test_name=test_name,
+            test_data_setup=test_data_setup,
+            test_steps=test_steps,
+            assertions=assertions
+        )
+        
+        return test_case
+    
+    def generate_edge_case_tests(self, test_name: str, test_url: str, test_data: Dict = None) -> str:
+        """Generate edge case and negative test scenarios"""
+        
+        edge_cases = ""
+        
+        if test_data:
+            feature_type = test_data.get('feature_type', 'generic')
+            
+            if feature_type == 'login':
+                edge_cases += f"""
+  test('Login with invalid credentials - {test_name}', async ({{ page }}) => {{
+    await page.goto('{test_url}');
+    await page.waitForLoadState('networkidle');
+    
+    await page.fill("input[type='email'], input[name*='email']", 'invalid@example.com');
+    await page.fill("input[type='password']", 'wrongpassword');
+    await page.click("button[type='submit'], .login-button");
+    
+    // Verify error message appears
+    await expect(page.locator('.error, .alert-danger, .invalid-feedback')).toBeVisible();
+    await expect(page.locator('body')).toContainText(/invalid|error|wrong|incorrect/i);
+  }});
+
+  test('Login with empty fields - {test_name}', async ({{ page }}) => {{
+    await page.goto('{test_url}');
+    await page.waitForLoadState('networkidle');
+    
+    await page.click("button[type='submit'], .login-button");
+    
+    // Verify validation messages
+    await expect(page.locator('input:invalid, .error, .is-invalid')).toBeVisible();
+  }});"""
+            
+            elif feature_type == 'registration':
+                edge_cases += f"""
+  test('Registration with invalid email - {test_name}', async ({{ page }}) => {{
+    await page.goto('{test_url}');
+    await page.waitForLoadState('networkidle');
+    
+    await page.fill("input[type='email'], input[name*='email']", 'invalid-email');
+    await page.fill("input[name*='password'], input[type='password']", 'TestPassword123!');
+    await page.click("button[type='submit'], .register-button");
+    
+    // Verify email validation error
+    await expect(page.locator('input:invalid, .error, .is-invalid')).toBeVisible();
+  }});
+
+  test('Registration with weak password - {test_name}', async ({{ page }}) => {{
+    await page.goto('{test_url}');
+    await page.waitForLoadState('networkidle');
+    
+    await page.fill("input[type='email'], input[name*='email']", 'test@example.com');
+    await page.fill("input[name*='password'], input[type='password']", '123');
+    await page.click("button[type='submit'], .register-button");
+    
+    // Verify password validation
+    await expect(page.locator('.error, .alert, .invalid-feedback')).toBeVisible();
+  }});"""
+            
+            elif feature_type == 'search':
+                edge_cases += f"""
+  test('Search with empty query - {test_name}', async ({{ page }}) => {{
+    await page.goto('{test_url}');
+    await page.waitForLoadState('networkidle');
+    
+    await page.click("button[type='submit'], .search-button");
+    
+    // Verify empty search handling
+    await expect(page.locator('.no-results, .empty-search, .error')).toBeVisible();
+  }});"""
+        
+        return edge_cases
+    
+    def generate_package_json(self) -> str:
+        """Generate package.json for Playwright project"""
+        return """{
+  "name": "jira-automated-tests",
+  "version": "1.0.0",
+  "description": "Auto-generated Playwright tests from JIRA test cases",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:headed": "npx playwright test --headed",
+    "test:debug": "npx playwright test --debug",
+    "test:ui": "npx playwright test --ui",
+    "test:report": "npx playwright show-report",
+    "test:codegen": "npx playwright codegen"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.0.0"
+  },
+  "keywords": ["playwright", "testing", "automation", "jira"],
+  "author": "JIRA Test Generator",
+  "license": "MIT"
+}"""
+    
+    def generate_playwright_config(self) -> str:
+        """Generate playwright.config.ts"""
+        return """import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: [
+    ['html'],
+    ['json', { outputFile: 'test-results.json' }],
+    ['junit', { outputFile: 'test-results.xml' }]
+  ],
+  use: {
+    baseURL: process.env.BASE_URL || 'http://localhost:3000',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+    headless: process.env.CI ? true : false,
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
+    // Mobile testing
+    {
+      name: 'Mobile Chrome',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'Mobile Safari',
+      use: { ...devices['iPhone 12'] },
+    },
+  ],
+  webServer: {
+    command: 'npm run start',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
+  },
+});"""
+    
+    def format_typescript_code(self, code: str) -> str:
+        """Clean and format TypeScript code for better readability"""
+        # Remove any escaped newlines and fix formatting
+        code = code.replace('\\n', '\n')
+        code = code.replace('\\t', '\t')
+        
+        # Split into lines and clean each line
+        lines = code.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            # Remove extra whitespace but preserve indentation
+            stripped = line.rstrip()
+            if stripped:
+                formatted_lines.append(stripped)
+            else:
+                formatted_lines.append('')  # Keep empty lines
+        
+        return '\n'.join(formatted_lines)
+    
+    def generate_optimized_test_suite(self, automation_result: str, test_name: str, test_url: str, test_data: Dict = None) -> Dict[str, str]:
+        """Generate complete optimized Playwright test suite"""
+        
+        # Extract and optimize actions
+        actions = self.extract_actions_from_result(automation_result, test_data)
+        optimized_actions = self.optimize_actions(actions)
+        
+        # Generate main test case
+        main_test = self.generate_playwright_code(optimized_actions, test_name, test_url, test_data)
+        
+        # Generate additional test cases for edge cases
+        edge_test_cases = self.generate_edge_case_tests(test_name, test_url, test_data)
+        
+        # Combine all test cases
+        all_tests = main_test + edge_test_cases
+        
+        # Generate complete test suite
+        test_suite = self.base_template.format(
+            test_suite_name=f"{test_name} Test Suite",
+            test_cases=all_tests
+        )
+        
+        # Format the TypeScript code for better readability
+        test_suite = self.format_typescript_code(test_suite)
+        
+        # Generate package.json and config
+        package_json = self.generate_package_json()
+        playwright_config = self.generate_playwright_config()
+        
+        return {
+            'test_suite': test_suite,
+            'package_json': package_json,
+            'playwright_config': playwright_config,
+            'actions_extracted': len(actions),
+            'actions_optimized': len(optimized_actions)
+        }
 
 def get_issue_types(base_url, username, api_key, project_key):
     """Get available issue types for the project"""
@@ -455,6 +917,7 @@ class BrowserTestRunner:
         self.running = False
         self.thread = None
         self.current_report_dir = None
+        self.playwright_generator = PlaywrightCodeGenerator()
         
     def extract_test_steps(self, test_case_content):
         """Extract actionable test steps from test case content"""
@@ -610,13 +1073,24 @@ IMPORTANT:
                 self.status_queue.put("📄 Generating test report...")
                 report_path = self.generate_test_report(url, automation_task, result, report_name, browser_available)
                 
+                # Generate Playwright scripts after successful automation
+                test_name = "Auto Generated Test"
+                if test_data:
+                    feature_type = test_data.get('feature_type', 'generic')
+                    test_name = f"{feature_type.title()} Feature Test"
+                
+                playwright_result = self.generate_playwright_scripts(
+                    str(result), test_name, url, test_data
+                )
+                
                 self.result_queue.put({
                     "success": True,
                     "result": result,
                     "report_path": str(report_path) if report_path else None,
                     "report_dir": str(self.current_report_dir),
                     "mode": "real" if browser_available else "demo",
-                    "test_data": test_data
+                    "test_data": test_data,
+                    "playwright_scripts": playwright_result  # Add Playwright results
                 })
                 
             except Exception as e:
@@ -808,6 +1282,143 @@ Note: This is a demonstration with test data integration. Install browser-use an
         except queue.Empty:
             return None
     
+    def generate_playwright_scripts(self, automation_result: str, test_name: str, test_url: str, test_data: Dict = None) -> Dict[str, str]:
+        """Generate optimized Playwright scripts from automation results"""
+        try:
+            self.status_queue.put("🎭 Generating Playwright test scripts...")
+            
+            # Generate the complete test suite
+            playwright_files = self.playwright_generator.generate_optimized_test_suite(
+                automation_result, test_name, test_url, test_data
+            )
+            
+            # Save files to report directory
+            if self.current_report_dir:
+                playwright_dir = self.current_report_dir / "playwright_tests"
+                playwright_dir.mkdir(exist_ok=True)
+                
+                # Save test file
+                test_file_name = f"{test_name.lower().replace(' ', '_').replace('-', '_')}.spec.ts"
+                test_file = playwright_dir / test_file_name
+                test_file.write_text(playwright_files['test_suite'], encoding='utf-8')
+                
+                # Save package.json
+                package_file = playwright_dir / "package.json"
+                package_file.write_text(playwright_files['package_json'], encoding='utf-8')
+                
+                # Save playwright config
+                config_file = playwright_dir / "playwright.config.ts"
+                config_file.write_text(playwright_files['playwright_config'], encoding='utf-8')
+                
+                # Create README with instructions
+                readme_content = f"""# Auto-Generated Playwright Tests
+
+## Setup Instructions
+
+1. **Install dependencies:**
+   ```bash
+   cd {playwright_dir.name}
+   npm install
+   npx playwright install
+   ```
+
+2. **Run tests:**
+   ```bash
+   # Run all tests
+   npm test
+   
+   # Run with browser visible
+   npm run test:headed
+   
+   # Debug mode
+   npm run test:debug
+   
+   # Interactive UI mode
+   npm run test:ui
+   ```
+
+3. **View reports:**
+   ```bash
+   npm run test:report
+   ```
+
+## Generated Files
+
+- `{test_file_name}` - Main test suite with {playwright_files['actions_extracted']} actions optimized to {playwright_files['actions_optimized']} steps
+- `package.json` - Node.js dependencies and scripts  
+- `playwright.config.ts` - Playwright configuration
+- `README.md` - This file
+
+## Test Data Integration
+
+The tests include:
+- **Data-driven testing** using {test_data.get('source', 'generated')} data source
+- **Edge case scenarios** for robust testing
+- **Cross-browser compatibility** (Chrome, Firefox, Safari)
+- **Mobile testing** (Chrome Mobile, Safari Mobile)
+- **Visual regression testing** with screenshots
+- **CI/CD ready** configuration
+
+## Test Features
+
+✅ **Intelligent Selectors** - Multiple fallback CSS selectors for reliability
+✅ **Wait Strategies** - Proper waits for page loads and element availability  
+✅ **Error Handling** - Robust error handling and retries
+✅ **Assertions** - Comprehensive validation of expected behaviors
+✅ **Screenshots** - Automatic screenshots on test failures
+✅ **Video Recording** - Video capture for failed test debugging
+✅ **Parallel Execution** - Run tests in parallel for faster feedback
+
+## Customization
+
+Modify the test files as needed for your specific application:
+1. Update selectors in the test file if your app uses different ones
+2. Adjust assertions based on your app's specific behavior  
+3. Add more test data scenarios in the test data constants
+4. Configure baseURL in playwright.config.ts to match your environment
+
+## Advanced Features
+
+- **Codegen**: Use `npm run test:codegen` to record new tests interactively
+- **Trace Viewer**: Detailed execution traces for debugging failed tests
+- **Test Parallelization**: Automatic parallel execution across browsers
+- **CI Integration**: Ready for GitHub Actions, Jenkins, or other CI systems
+
+*Generated from JIRA issue test automation results on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+"""
+                
+                readme_file = playwright_dir / "README.md"
+                readme_file.write_text(readme_content, encoding='utf-8')
+                
+                # Create tests directory
+                tests_dir = playwright_dir / "tests"
+                tests_dir.mkdir(exist_ok=True)
+                
+                # Move test file to tests directory
+                final_test_file = tests_dir / test_file_name
+                final_test_file.write_text(playwright_files['test_suite'], encoding='utf-8')
+                test_file.unlink()  # Remove the original file
+                
+                self.status_queue.put(f"✅ Playwright scripts generated in: {playwright_dir}")
+                
+                return {
+                    **playwright_files,
+                    'directory': str(playwright_dir),
+                    'test_file_path': str(final_test_file),
+                    'files_created': [
+                        f"tests/{test_file_name}",
+                        'package.json', 
+                        'playwright.config.ts',
+                        'README.md'
+                    ]
+                }
+            
+            return playwright_files
+            
+        except Exception as e:
+            self.status_queue.put(f"❌ Error generating Playwright scripts: {str(e)}")
+            return None
+
     def get_result(self):
         """Get automation result"""
         try:
@@ -945,6 +1556,56 @@ def main():
                         file_name="sample_test_data.csv",
                         mime="text/csv"
                     )
+        
+        st.markdown("---")
+        st.subheader("📊 Previous Reports")
+        
+        # List available reports
+        reports_dir = Path("automation_reports")
+        if reports_dir.exists():
+            report_folders = [d for d in reports_dir.iterdir() if d.is_dir()]
+            report_folders = sorted(report_folders, key=lambda x: x.name, reverse=True)  # Most recent first
+            
+            if report_folders:
+                selected_report = st.selectbox(
+                    "Select a report to view:",
+                    options=["None"] + [f.name for f in report_folders],
+                    key="sidebar_report_selector"
+                )
+                
+                if selected_report != "None":
+                    selected_report_path = reports_dir / selected_report
+                    html_files = list(selected_report_path.glob("*.html"))
+                    
+                    if html_files:
+                        html_file = html_files[0]  # Take the first HTML file
+                        
+                        col_view, col_open = st.columns(2)
+                        with col_view:
+                            if st.button("👁️ View", key="sidebar_view_report"):
+                                st.session_state.sidebar_show_report = True
+                                st.session_state.sidebar_report_path = str(html_file)
+                        
+                        with col_open:
+                            if st.button("📁 Open", key="sidebar_open_report"):
+                                if platform.system() == "Darwin":  # macOS
+                                    subprocess.run(["open", str(selected_report_path)])
+                                elif platform.system() == "Windows":
+                                    subprocess.run(["explorer", str(selected_report_path)])
+                                else:  # Linux
+                                    subprocess.run(["xdg-open", str(selected_report_path)])
+                        
+                        # Show report info
+                        st.caption(f"📁 {selected_report}")
+                        if html_file.exists():
+                            file_size = html_file.stat().st_size / 1024  # KB
+                            st.caption(f"📄 {html_file.name} ({file_size:.1f} KB)")
+                    else:
+                        st.caption("No HTML report found in this folder")
+            else:
+                st.caption("No reports available yet")
+        else:
+            st.caption("No reports directory found")
         
         st.markdown("---")
         st.markdown("**API Keys Required:**")
@@ -1139,8 +1800,138 @@ def main():
                     if result:
                         if result["success"]:
                             st.success("🎉 Test automation completed successfully!")
+                            
                             if result.get("report_path"):
-                                st.success(f"📄 Report generated: {result['report_path']}")
+                                report_path = result['report_path']
+                                
+                                # Report Section with prominent buttons
+                                st.markdown("### 📊 Test Report")
+                                st.success(f"📄 Report generated: `{Path(report_path).name}`")
+                                
+                                # Make report buttons more prominent
+                                col_report1, col_report2, col_report3 = st.columns([2, 2, 1])
+                                with col_report1:
+                                    if st.button("📊 **View HTML Report**", key="view_report_tab1", type="primary"):
+                                        st.session_state.show_report_tab1 = True
+                                        st.session_state.current_report_path_tab1 = report_path
+                                        st.rerun()
+                                
+                                with col_report2:
+                                    if st.button("📁 Open Report Directory", key="open_report_dir_tab1"):
+                                        report_dir = Path(report_path).parent
+                                        if report_dir.exists():
+                                            if platform.system() == "Darwin":  # macOS
+                                                subprocess.run(["open", str(report_dir)])
+                                            elif platform.system() == "Windows":
+                                                subprocess.run(["explorer", str(report_dir)])
+                                            else:  # Linux
+                                                subprocess.run(["xdg-open", str(report_dir)])
+                                            st.success("📁 Report directory opened!")
+                                        else:
+                                            st.error("Report directory not found!")
+                                
+                                with col_report3:
+                                    st.download_button(
+                                        label="📥 Download",
+                                        data=open(report_path, 'r', encoding='utf-8').read() if Path(report_path).exists() else "",
+                                        file_name=Path(report_path).name,
+                                        mime="text/html",
+                                        key="download_report_tab1"
+                                    )
+                                
+                                # Display HTML report inline if requested
+                                if st.session_state.get('show_report_tab1', False) and st.session_state.get('current_report_path_tab1'):
+                                    try:
+                                        report_file_path = Path(st.session_state.current_report_path_tab1)
+                                        if report_file_path.exists():
+                                            with open(report_file_path, 'r', encoding='utf-8') as f:
+                                                html_content = f.read()
+                                            
+                                            st.markdown("---")
+                                            st.subheader("📊 Automation Test Report")
+                                            
+                                            # Add close button
+                                            if st.button("❌ Close Report", key="close_report_tab1"):
+                                                st.session_state.show_report_tab1 = False
+                                                st.rerun()
+                                            
+                                            # Display HTML content
+                                            st.components.v1.html(html_content, height=800, scrolling=True)
+                                            
+                                        else:
+                                            st.error("Report file not found!")
+                                            st.session_state.show_report_tab1 = False
+                                    except Exception as e:
+                                        st.error(f"Error loading report: {str(e)}")
+                                        st.session_state.show_report_tab1 = False
+                            
+                            # Visual separator
+                            st.markdown("---")
+                            
+                            # Display Playwright generation results
+                            if result.get("playwright_scripts"):
+                                st.markdown("### 🎭 Playwright Test Scripts")
+                                st.success("**Playwright test scripts generated successfully!**")
+                                
+                                playwright_info = result["playwright_scripts"]
+                                
+                                col_pw1, col_pw2 = st.columns(2)
+                                
+                                with col_pw1:
+                                    st.info(f"""
+**Playwright Package Created:**
+- **Directory**: `{playwright_info.get('directory', 'N/A')}`
+- **Actions Extracted**: {playwright_info.get('actions_extracted', 'N/A')}
+- **Actions Optimized**: {playwright_info.get('actions_optimized', 'N/A')}
+- **Files Created**: {len(playwright_info.get('files_created', []))}
+                                    """)
+                                
+                                with col_pw2:
+                                    if st.button("📁 Open Playwright Directory", key="open_pw_dir_tab1"):
+                                        pw_dir = playwright_info.get('directory')
+                                        if pw_dir and Path(pw_dir).exists():
+                                            if platform.system() == "Darwin":  # macOS
+                                                subprocess.run(["open", pw_dir])
+                                            elif platform.system() == "Windows":
+                                                subprocess.run(["explorer", pw_dir])
+                                            else:  # Linux
+                                                subprocess.run(["xdg-open", pw_dir])
+                                            st.success("📁 Directory opened!")
+                                        else:
+                                            st.error("Directory not found!")
+                                
+                                # Show generated test code preview
+                                if playwright_info.get('test_suite'):
+                                    with st.expander("🎭 **Preview Generated Playwright Test Code**", expanded=False):
+                                        st.code(playwright_info['test_suite'][:2000] + "\\n\\n# ... (truncated for preview)", language='typescript')
+                                        
+                                        st.download_button(
+                                            label="📥 Download Complete Test Suite (.ts)",
+                                            data=playwright_info['test_suite'],
+                                            file_name=f"auto_generated_test.spec.ts",
+                                            mime="text/plain",
+                                            key="download_pw_test_tab1"
+                                        )
+                                
+                                # Installation and usage instructions
+                                st.info("""
+**🚀 Quick Start with Generated Tests:**
+
+1. **Navigate to the Playwright directory** (use button above)
+2. **Install dependencies**: `npm install && npx playwright install`
+3. **Run tests**: `npm test` (headless) or `npm run test:headed` (visible)
+4. **Debug tests**: `npm run test:debug` or `npm run test:ui` (interactive)
+5. **View reports**: `npm run test:report`
+
+💡 **The generated tests include:**
+- Data-driven test scenarios using your test data
+- Edge case and negative testing scenarios
+- Cross-browser compatibility (Chrome, Firefox, Safari)
+- Mobile testing (Chrome Mobile, Safari Mobile)
+- Screenshots and video recording on failures
+- CI/CD ready configuration with best practices
+                                """)
+                            
                             st.session_state.automation_result = result
                         else:
                             st.error(f"❌ Test automation failed: {result['error']}")
@@ -1289,14 +2080,182 @@ def main():
                     if result:
                         if result["success"]:
                             st.success("🎉 Test automation completed successfully!")
+                            
                             if result.get("report_path"):
-                                st.success(f"📄 Report generated: {result['report_path']}")
+                                report_path = result['report_path']
+                                
+                                # Report Section with prominent buttons
+                                st.markdown("### 📊 Test Report")
+                                st.success(f"📄 Report generated: `{Path(report_path).name}`")
+                                
+                                # Make report buttons more prominent
+                                col_report1, col_report2, col_report3 = st.columns([2, 2, 1])
+                                with col_report1:
+                                    if st.button("📊 **View HTML Report**", key="view_report_tab2", type="primary"):
+                                        st.session_state.show_report_tab2 = True
+                                        st.session_state.current_report_path_tab2 = report_path
+                                        st.rerun()
+                                
+                                with col_report2:
+                                    if st.button("📁 Open Report Directory", key="open_report_dir_tab2"):
+                                        report_dir = Path(report_path).parent
+                                        if report_dir.exists():
+                                            if platform.system() == "Darwin":  # macOS
+                                                subprocess.run(["open", str(report_dir)])
+                                            elif platform.system() == "Windows":
+                                                subprocess.run(["explorer", str(report_dir)])
+                                            else:  # Linux
+                                                subprocess.run(["xdg-open", str(report_dir)])
+                                            st.success("📁 Report directory opened!")
+                                        else:
+                                            st.error("Report directory not found!")
+                                
+                                with col_report3:
+                                    st.download_button(
+                                        label="📥 Download",
+                                        data=open(report_path, 'r', encoding='utf-8').read() if Path(report_path).exists() else "",
+                                        file_name=Path(report_path).name,
+                                        mime="text/html",
+                                        key="download_report_tab2"
+                                    )
+                                
+                                # Display HTML report inline if requested
+                                if st.session_state.get('show_report_tab2', False) and st.session_state.get('current_report_path_tab2'):
+                                    try:
+                                        report_file_path = Path(st.session_state.current_report_path_tab2)
+                                        if report_file_path.exists():
+                                            with open(report_file_path, 'r', encoding='utf-8') as f:
+                                                html_content = f.read()
+                                            
+                                            st.markdown("---")
+                                            st.subheader("📊 Automation Test Report")
+                                            
+                                            # Add close button
+                                            if st.button("❌ Close Report", key="close_report_tab2"):
+                                                st.session_state.show_report_tab2 = False
+                                                st.rerun()
+                                            
+                                            # Display HTML content
+                                            st.components.v1.html(html_content, height=800, scrolling=True)
+                                            
+                                        else:
+                                            st.error("Report file not found!")
+                                            st.session_state.show_report_tab2 = False
+                                    except Exception as e:
+                                        st.error(f"Error loading report: {str(e)}")
+                                        st.session_state.show_report_tab2 = False
+                            
+                            # Visual separator
+                            st.markdown("---")
+                            
+                            # Display Playwright generation results
+                            if result.get("playwright_scripts"):
+                                st.markdown("### 🎭 Playwright Test Scripts")
+                                st.success("**Playwright test scripts generated successfully!**")
+                                
+                                playwright_info = result["playwright_scripts"]
+                                
+                                col_pw1, col_pw2 = st.columns(2)
+                                
+                                with col_pw1:
+                                    st.info(f"""
+**Playwright Package Created:**
+- **Directory**: `{playwright_info.get('directory', 'N/A')}`
+- **Actions Extracted**: {playwright_info.get('actions_extracted', 'N/A')}
+- **Actions Optimized**: {playwright_info.get('actions_optimized', 'N/A')}
+- **Files Created**: {len(playwright_info.get('files_created', []))}
+                                    """)
+                                
+                                with col_pw2:
+                                    if st.button("📁 Open Playwright Directory", key="open_pw_dir_tab2"):
+                                        pw_dir = playwright_info.get('directory')
+                                        if pw_dir and Path(pw_dir).exists():
+                                            if platform.system() == "Darwin":  # macOS
+                                                subprocess.run(["open", pw_dir])
+                                            elif platform.system() == "Windows":
+                                                subprocess.run(["explorer", pw_dir])
+                                            else:  # Linux
+                                                subprocess.run(["xdg-open", pw_dir])
+                                            st.success("📁 Directory opened!")
+                                        else:
+                                            st.error("Directory not found!")
+                                
+                                # Show generated test code preview
+                                if playwright_info.get('test_suite'):
+                                    with st.expander("🎭 **Preview Generated Playwright Test Code**", expanded=False):
+                                        st.code(playwright_info['test_suite'][:2000] + "\\n\\n# ... (truncated for preview)", language='typescript')
+                                        
+                                        st.download_button(
+                                            label="📥 Download Complete Test Suite (.ts)",
+                                            data=playwright_info['test_suite'],
+                                            file_name=f"auto_generated_test.spec.ts",
+                                            mime="text/plain",
+                                            key="download_pw_test_tab2"
+                                        )
+                                
+                                # Installation and usage instructions
+                                st.info("""
+**🚀 Quick Start with Generated Tests:**
+
+1. **Navigate to the Playwright directory** (use button above)
+2. **Install dependencies**: `npm install && npx playwright install`
+3. **Run tests**: `npm test` (headless) or `npm run test:headed` (visible)
+4. **Debug tests**: `npm run test:debug` or `npm run test:ui` (interactive)
+5. **View reports**: `npm run test:report`
+
+💡 **The generated tests include:**
+- Data-driven test scenarios using your test data
+- Edge case and negative testing scenarios
+- Cross-browser compatibility (Chrome, Firefox, Safari)
+- Mobile testing (Chrome Mobile, Safari Mobile)
+- Screenshots and video recording on failures
+- CI/CD ready configuration with best practices
+                                """)
+                            
                             st.session_state.automation_result = result
                         else:
                             st.error(f"❌ Test automation failed: {result['error']}")
                         st.rerun()
             else:
                 st.info("👆 Enter issue details and click 'Fetch Issue' to generate test case")
+    
+    # Display sidebar report viewer
+    if st.session_state.get('sidebar_show_report', False) and st.session_state.get('sidebar_report_path'):
+        try:
+            report_file_path = Path(st.session_state.sidebar_report_path)
+            if report_file_path.exists():
+                with open(report_file_path, 'r', encoding='utf-8') as f:
+                    html_content = f.read()
+                
+                st.markdown("---")
+                st.header("📊 Previous Test Report")
+                st.subheader(f"📁 {report_file_path.parent.name}")
+                
+                # Add close button
+                col_close, col_download = st.columns([1, 3])
+                with col_close:
+                    if st.button("❌ Close Report", key="close_sidebar_report"):
+                        st.session_state.sidebar_show_report = False
+                        st.rerun()
+                
+                with col_download:
+                    st.download_button(
+                        label="📥 Download HTML Report",
+                        data=html_content,
+                        file_name=report_file_path.name,
+                        mime="text/html",
+                        key="download_sidebar_report"
+                    )
+                
+                # Display HTML content
+                st.components.v1.html(html_content, height=800, scrolling=True)
+                
+            else:
+                st.error("Report file not found!")
+                st.session_state.sidebar_show_report = False
+        except Exception as e:
+            st.error(f"Error loading report: {str(e)}")
+            st.session_state.sidebar_show_report = False
     
     # Live status updates
     if st.session_state.test_runner.running:
